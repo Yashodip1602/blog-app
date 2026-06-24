@@ -9,6 +9,7 @@ import 'login_screen.dart';
 import 'user_management_screen.dart';
 import 'author_role_request_screen.dart';
 import 'settings_screen.dart';
+import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -109,28 +110,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         fontSize: 14,
                       ),
                     ).animate().fadeIn(delay: 170.ms, duration: 600.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuart),
-                    
-                    const SizedBox(height: 16),
-                    
-                    Text(
-                      'Passionate Flutter developer, UI/UX enthusiast, and tech writer. Creating beautiful cross-platform experiences.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(
-                        color: AppColors.of(context).textSecondary,
-                        fontSize: 14,
-                        height: 1.5,
-                      ),
-                    ).animate().fadeIn(delay: 200.ms, duration: 600.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuart),
-                    
-                    const SizedBox(height: 8),
-                    
-                    Text(
-                      'Joined June 2026',
-                      style: GoogleFonts.inter(
-                        color: AppColors.of(context).textHint,
-                        fontSize: 12,
-                      ),
-                    ).animate().fadeIn(delay: 250.ms, duration: 600.ms),
                   ],
                 ),
               ),
@@ -141,9 +120,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _buildStatItem('12', 'Blogs Published'),
-                  _buildStatItem('128', 'Bookmarks'),
-                  _buildStatItem('15k', 'Total Likes'),
+                  _buildStatItem('120', 'Following'),
+                  _buildStatItem('340', 'Followers'),
+                  _buildStatItem('12', 'Total Posts'),
                 ],
               ).animate().fadeIn(delay: 300.ms, duration: 600.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuart),
               
@@ -171,7 +150,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: Colors.transparent,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(24),
-                          onTap: () {},
+                          onTap: () async {
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const EditProfileScreen(),
+                              ),
+                            );
+                            if (result == true) {
+                              _loadUserData();
+                            }
+                          },
                           child: Center(
                             child: Text(
                               'Edit Profile',

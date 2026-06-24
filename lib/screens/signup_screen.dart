@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import '../theme/app_colors.dart';
 import '../widgets/glass_container.dart';
 
@@ -16,7 +18,9 @@ class _SignupScreenState extends State<SignupScreen> {
   
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  bool _hasUploadedPhoto = false;
+  
+  File? _imageFile;
+  final ImagePicker _picker = ImagePicker();
   
   final TextEditingController _passwordController = TextEditingController();
 
@@ -28,7 +32,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   void _submitForm() {
     if (_formKey.currentState!.validate()) {
-      if (!_hasUploadedPhoto) {
+      if (_imageFile == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Please upload a profile photo (JPG, PNG, WEBP < 2MB)', style: GoogleFonts.inter(color: Colors.white)),
@@ -46,6 +50,60 @@ class _SignupScreenState extends State<SignupScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(source: source);
+      if (pickedFile != null) {
+        setState(() {
+          _imageFile = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to pick image: $e', style: GoogleFonts.inter(color: Colors.white)),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showImagePickerOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.of(context).surfaceLight,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: Text('Gallery', style: GoogleFonts.inter(color: AppColors.of(context).textPrimary)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: Text('Camera', style: GoogleFonts.inter(color: AppColors.of(context).textPrimary)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildFormField({
@@ -168,11 +226,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       children: [
                         // Profile Photo Upload
                         GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _hasUploadedPhoto = !_hasUploadedPhoto; // Toggle mock upload
-                            });
-                          },
+                          onTap: _showImagePickerOptions,
                           child: Stack(
                             children: [
                               Container(
@@ -182,14 +236,14 @@ class _SignupScreenState extends State<SignupScreen> {
                                   shape: BoxShape.circle,
                                   color: AppColors.of(context).surfaceLight.withOpacity(0.5),
                                   border: Border.all(color: AppColors.of(context).glassBorder, width: 2),
-                                  image: _hasUploadedPhoto
-                                      ? const DecorationImage(
-                                          image: NetworkImage('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=300&h=300'),
+                                  image: _imageFile != null
+                                      ? DecorationImage(
+                                          image: FileImage(_imageFile!),
                                           fit: BoxFit.cover,
                                         )
                                       : null,
                                 ),
-                                child: !_hasUploadedPhoto
+                                child: _imageFile == null
                                     ? Icon(Icons.person, size: 50, color: AppColors.of(context).textSecondary)
                                     : null,
                               ),
