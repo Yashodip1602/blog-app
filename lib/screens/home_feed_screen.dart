@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_colors.dart';
 import '../widgets/blog_card.dart';
+import '../services/api_service.dart';
 
 class HomeFeedScreen extends StatefulWidget {
   const HomeFeedScreen({super.key});
@@ -13,7 +14,8 @@ class HomeFeedScreen extends StatefulWidget {
 }
 
 class _HomeFeedScreenState extends State<HomeFeedScreen> {
-  String _userName = 'Yashodip'; // Default
+  String _userName = '';
+  String _profilePhotoUrl = '';
 
   @override
   void initState() {
@@ -22,17 +24,43 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
   }
 
   Future<void> _loadUserName() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _userName = prefs.getString('demoUserName') ?? 'Yashodip';
-    });
+    try {
+      final response = await ApiService().getProfile();
+      if (response['success'] == true) {
+        final data = response['data'];
+        final fullName = data['full_name'] as String;
+        final firstName = fullName.split(' ').first;
+        final profilePhotoUrl = data['profile_photo_url'] as String?;
+        
+        // Save to local storage
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('demoUserName', fullName);
+        if (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty) {
+          await prefs.setString('profilePhotoUrl', profilePhotoUrl);
+        }
+
+        setState(() {
+          _userName = firstName;
+          if (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty) {
+            _profilePhotoUrl = profilePhotoUrl;
+          }
+        });
+      }
+    } catch (e) {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        final savedName = prefs.getString('demoUserName') ?? '';
+        _userName = savedName.isNotEmpty ? savedName.split(' ').first : '';
+        _profilePhotoUrl = prefs.getString('profilePhotoUrl') ?? '';
+      });
+    }
   }
 
   final List<String> _filters = [
-    'Technology', 'Programming', 'DevOps', 'AI', 'Business', 'Travel', 'Lifestyle'
+    'All', 'Technology', 'Programming', 'AI', 'Business', 'Travel', 'Lifestyle'
   ];
-  String _selectedFilter = 'Technology';
-
+  String _selectedFilter = 'All';
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -50,9 +78,11 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
                   Expanded(
                     child: Row(
                       children: [
-                        const CircleAvatar(
+                        CircleAvatar(
                           radius: 24,
-                          backgroundImage: NetworkImage('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150&h=150'),
+                          backgroundColor: AppColors.of(context).surfaceLight,
+                          backgroundImage: _profilePhotoUrl.isNotEmpty ? NetworkImage(_profilePhotoUrl) : null,
+                          child: _profilePhotoUrl.isEmpty ? Icon(Icons.person, color: AppColors.of(context).textSecondary) : null,
                         ),
                         const SizedBox(width: 16),
                         Expanded(
@@ -60,7 +90,7 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Good Morning, $_userName 👋',
+                                _userName.isNotEmpty ? 'Good Morning, $_userName 👋' : 'Good Morning 👋',
                                 style: GoogleFonts.inter(
                                   color: AppColors.of(context).textPrimary,
                                   fontWeight: FontWeight.bold,

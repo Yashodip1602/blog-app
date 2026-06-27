@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_colors.dart';
 import '../widgets/glass_container.dart';
 import '../models/user_model.dart';
+import '../services/api_service.dart';
 import 'login_screen.dart';
 import 'user_management_screen.dart';
 import 'author_role_request_screen.dart';
@@ -20,9 +21,11 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final UserRole currentUserRole = UserRole.user; // Mock role to test Author Request flow as a normal user
-  String _userName = 'Yashodip Mahajan';
-  String _userEmail = 'user@example.com';
-  String _userHandle = '@yashodip';
+  String _userName = '';
+  String _userEmail = '';
+  String _userHandle = '';
+  String _userPhone = '';
+  String _profilePhotoUrl = '';
 
   @override
   void initState() {
@@ -31,12 +34,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadUserData() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _userName = prefs.getString('demoUserName') ?? 'Yashodip Mahajan';
-      _userEmail = prefs.getString('demoUserEmail') ?? 'user@example.com';
-      _userHandle = '@${_userName.toLowerCase().replaceAll(' ', '')}';
-    });
+    try {
+      final response = await ApiService().getProfile();
+      if (response['success'] == true) {
+        final data = response['data'];
+        
+        // Save to local storage
+        final prefs = await SharedPreferences.getInstance();
+        if (data['full_name'] != null) await prefs.setString('demoUserName', data['full_name']);
+        if (data['email'] != null) await prefs.setString('demoUserEmail', data['email']);
+        if (data['phone_no'] != null) await prefs.setString('userPhone', data['phone_no']);
+        if (data['profile_photo_url'] != null) await prefs.setString('profilePhotoUrl', data['profile_photo_url']);
+
+        setState(() {
+          _userName = data['full_name'] ?? _userName;
+          _userEmail = data['email'] ?? _userEmail;
+          _userPhone = data['phone_no'] ?? _userPhone;
+          if (data['profile_photo_url'] != null && data['profile_photo_url'].toString().isNotEmpty) {
+            _profilePhotoUrl = data['profile_photo_url'];
+          }
+          _userHandle = _userName.isNotEmpty ? '@${_userName.toLowerCase().replaceAll(' ', '')}' : '';
+        });
+      }
+    } catch (e) {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _userName = prefs.getString('demoUserName') ?? '';
+        _userEmail = prefs.getString('demoUserEmail') ?? '';
+        _userPhone = prefs.getString('userPhone') ?? '';
+        _profilePhotoUrl = prefs.getString('profilePhotoUrl') ?? '';
+        _userHandle = _userName.isNotEmpty ? '@${_userName.toLowerCase().replaceAll(' ', '')}' : '';
+      });
+    }
   }
 
   @override
@@ -63,9 +92,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ],
                       ),
-                      child: const CircleAvatar(
+                      child: CircleAvatar(
                         radius: 50,
-                        backgroundImage: NetworkImage('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=300&h=300'),
+                        backgroundColor: AppColors.of(context).surfaceLight,
+                        backgroundImage: _profilePhotoUrl.isNotEmpty ? NetworkImage(_profilePhotoUrl) : null,
+                        child: _profilePhotoUrl.isEmpty ? Icon(Icons.person, size: 50, color: AppColors.of(context).textSecondary) : null,
                       ),
                     ).animate().fadeIn(duration: 600.ms).scale(begin: const Offset(0.8, 0.8), curve: Curves.easeOutBack),
                     
@@ -104,7 +135,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 4),
                     
                     Text(
-                      '+1 234 567 8900',
+                      _userPhone,
                       style: GoogleFonts.inter(
                         color: AppColors.of(context).textSecondary,
                         fontSize: 14,
@@ -309,21 +340,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Text('Cancel', style: GoogleFonts.inter(color: AppColors.of(context).textSecondary)),
             ),
             TextButton(
-              onPressed: () {
-                // Mock clearing token
-                Navigator.pop(context); // close dialog
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Logged out successfully.', style: GoogleFonts.inter(color: Colors.white)),
-                    backgroundColor: Colors.redAccent,
-                  ),
-                );
-                // Redirect to login
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (context) => const LoginScreen()),
-                  (route) => false,
-                );
+              onPressed: () async {
+                final prefs = await SharedPreferences.getInstance();
+                
+                // Save remember me data to restore it after clear
+                final rememberMe = prefs.getBool('remember_me');
+                final savedEmail = prefs.getString('saved_email');
+                final savedPassword = prefs.getString('saved_password');
+                
+                // Clear all local storage
+                await prefs.clear();
+                await ApiService().removeToken();
+                
+                // Restore remember me data
+                if (rememberMe == true) {
+                  await prefs.setBool('remember_me', true);
+                  if (savedEmail != null) await prefs.setString('saved_email', savedEmail);
+                  if (savedPassword != null) await prefs.setString('saved_password', savedPassword);
+                }
+
+                if (context.mounted) {
+                  Navigator.pop(context); // close dialog
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Logged out successfully.', style: GoogleFonts.inter(color: Colors.white)),
+                      backgroundColor: Colors.redAccent,
+                    ),
+                  );
+                  // Redirect to login
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (context) => const LoginScreen()),
+                    (route) => false,
+                  );
+                }
               },
               child: Text('Logout', style: GoogleFonts.inter(color: Colors.redAccent, fontWeight: FontWeight.bold)),
             ),

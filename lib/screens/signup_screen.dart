@@ -1,10 +1,13 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../theme/app_colors.dart';
 import '../widgets/glass_container.dart';
+import '../services/api_service.dart';
+import 'dashboard_screen.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -19,18 +22,26 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   
-  File? _imageFile;
+  XFile? _imageFile;
   final ImagePicker _picker = ImagePicker();
   
+  final TextEditingController _fullNameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+
+  bool _isLoading = false;
 
   @override
   void dispose() {
+    _fullNameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  void _submitForm() {
+  void _submitForm() async {
     if (_formKey.currentState!.validate()) {
       if (_imageFile == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -42,13 +53,46 @@ class _SignupScreenState extends State<SignupScreen> {
         return;
       }
       
-      // Proceed with registration
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Processing Registration...', style: GoogleFonts.inter()),
-          backgroundColor: AppColors.of(context).primary,
-        ),
-      );
+      setState(() {
+        _isLoading = true;
+      });
+
+      try {
+        final bytes = await _imageFile!.readAsBytes();
+        await ApiService().register(
+          fullName: _fullNameController.text.trim(),
+          phoneNo: _phoneController.text.trim(),
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+          profilePhotoBytes: bytes,
+          profilePhotoName: _imageFile!.name,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Registration successful!', style: GoogleFonts.inter()),
+              backgroundColor: AppColors.of(context).primary,
+            ),
+          );
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const DashboardScreen()));
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.toString().replaceAll('Exception: ', ''), style: GoogleFonts.inter(color: Colors.white)),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
     }
   }
 
@@ -57,7 +101,7 @@ class _SignupScreenState extends State<SignupScreen> {
       final XFile? pickedFile = await _picker.pickImage(source: source);
       if (pickedFile != null) {
         setState(() {
-          _imageFile = File(pickedFile.path);
+          _imageFile = pickedFile;
         });
       }
     } catch (e) {
@@ -113,6 +157,7 @@ class _SignupScreenState extends State<SignupScreen> {
     bool isConfirmPassword = false,
     TextInputType keyboardType = TextInputType.text,
     String? Function(String?)? validator,
+    TextEditingController? controller,
   }) {
     bool obscure = false;
     if (isPassword && !isConfirmPassword) obscure = _obscurePassword;
@@ -121,7 +166,7 @@ class _SignupScreenState extends State<SignupScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: TextFormField(
-        controller: (isPassword && !isConfirmPassword) ? _passwordController : null,
+        controller: controller ?? ((isPassword && !isConfirmPassword) ? _passwordController : null),
         obscureText: obscure,
         keyboardType: keyboardType,
         style: GoogleFonts.inter(color: AppColors.of(context).textPrimary),
@@ -238,7 +283,9 @@ class _SignupScreenState extends State<SignupScreen> {
                                   border: Border.all(color: AppColors.of(context).glassBorder, width: 2),
                                   image: _imageFile != null
                                       ? DecorationImage(
-                                          image: FileImage(_imageFile!),
+                                          image: kIsWeb 
+                                              ? NetworkImage(_imageFile!.path) as ImageProvider
+                                              : FileImage(File(_imageFile!.path)),
                                           fit: BoxFit.cover,
                                         )
                                       : null,
@@ -270,23 +317,15 @@ class _SignupScreenState extends State<SignupScreen> {
                         const SizedBox(height: 24),
                         
                         _buildFormField(
-                          hint: 'Enter first name',
+                          hint: 'Enter full name',
                           icon: Icons.person_outline,
-                          validator: (value) => value == null || value.isEmpty ? 'First name is required' : null,
-                        ),
-                        _buildFormField(
-                          hint: 'Enter middle name',
-                          icon: Icons.person_outline,
-                          // Optional field
-                        ),
-                        _buildFormField(
-                          hint: 'Enter last name',
-                          icon: Icons.person_outline,
-                          validator: (value) => value == null || value.isEmpty ? 'Last name is required' : null,
+                          controller: _fullNameController,
+                          validator: (value) => value == null || value.isEmpty ? 'Full name is required' : null,
                         ),
                         _buildFormField(
                           hint: 'Enter email address',
                           icon: Icons.email_outlined,
+                          controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
                           validator: (value) {
                             if (value == null || value.isEmpty) return 'Email is required';
@@ -299,6 +338,7 @@ class _SignupScreenState extends State<SignupScreen> {
                         _buildFormField(
                           hint: 'Enter phone number',
                           icon: Icons.phone_outlined,
+                          controller: _phoneController,
                           keyboardType: TextInputType.phone,
                           validator: (value) {
                             if (value == null || value.isEmpty) return 'Phone number is required';
@@ -349,16 +389,25 @@ class _SignupScreenState extends State<SignupScreen> {
                             color: Colors.transparent,
                             child: InkWell(
                               borderRadius: BorderRadius.circular(28),
-                              onTap: _submitForm,
+                              onTap: _isLoading ? null : _submitForm,
                               child: Center(
-                                child: Text(
-                                  'Sign Up',
-                                  style: GoogleFonts.inter(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
+                                child: _isLoading
+                                    ? const SizedBox(
+                                        height: 24,
+                                        width: 24,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2.5,
+                                        ),
+                                      )
+                                    : Text(
+                                        'Sign Up',
+                                        style: GoogleFonts.inter(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
                               ),
                             ),
                           ),

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_colors.dart';
 import '../widgets/glass_container.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../services/api_service.dart';
 import 'signup_screen.dart';
 import 'dashboard_screen.dart';
 
@@ -18,46 +19,84 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   bool _rememberMe = false;
+  bool _isLoading = false;
+  String? _emailError;
+  String? _passwordError;
   final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials();
+  }
+
+  Future<void> _loadSavedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rememberMe = prefs.getBool('remember_me') ?? false;
+    if (rememberMe) {
+      setState(() {
+        _rememberMe = true;
+        _emailController.text = prefs.getString('saved_email') ?? '';
+        _passwordController.text = prefs.getString('saved_password') ?? '';
+      });
+    }
+  }
 
   Widget _buildTextField({
     required String hint,
     required IconData icon,
     bool isPassword = false,
     TextEditingController? controller,
+    String? errorText,
+    ValueChanged<String>? onChanged,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.of(context).surfaceLight.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.of(context).glassBorder),
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: isPassword && _obscurePassword,
-        style: GoogleFonts.inter(color: AppColors.of(context).textPrimary),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: GoogleFonts.inter(color: AppColors.of(context).textHint),
-          prefixIcon: Icon(icon, color: AppColors.of(context).textSecondary, size: 20),
-          suffixIcon: isPassword
-              ? IconButton(
-                  icon: Icon(
-                    _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                    color: AppColors.of(context).textSecondary,
-                    size: 20,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _obscurePassword = !_obscurePassword;
-                    });
-                  },
-                )
-              : null,
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.of(context).surfaceLight.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: errorText != null ? Colors.redAccent : AppColors.of(context).glassBorder),
+          ),
+          child: TextField(
+            controller: controller,
+            obscureText: isPassword && _obscurePassword,
+            style: GoogleFonts.inter(color: AppColors.of(context).textPrimary),
+            onChanged: onChanged,
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: GoogleFonts.inter(color: AppColors.of(context).textHint),
+              prefixIcon: Icon(icon, color: errorText != null ? Colors.redAccent : AppColors.of(context).textSecondary, size: 20),
+              suffixIcon: isPassword
+                  ? IconButton(
+                      icon: Icon(
+                        _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                        color: errorText != null ? Colors.redAccent : AppColors.of(context).textSecondary,
+                        size: 20,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        });
+                      },
+                    )
+                  : null,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            ),
+          ),
         ),
-      ),
+        if (errorText != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 12, top: 8),
+            child: Text(
+              errorText,
+              style: GoogleFonts.inter(color: Colors.redAccent, fontSize: 12),
+            ),
+          ),
+      ],
     );
   }
 
@@ -158,12 +197,21 @@ class _LoginScreenState extends State<LoginScreen> {
                         hint: 'Enter email or phone number',
                         icon: Icons.email_outlined,
                         controller: _emailController,
+                        errorText: _emailError,
+                        onChanged: (val) {
+                          if (_emailError != null) setState(() => _emailError = null);
+                        },
                       ),
                       const SizedBox(height: 16),
                       _buildTextField(
                         hint: 'Enter your password',
                         icon: Icons.lock_outline,
                         isPassword: true,
+                        controller: _passwordController,
+                        errorText: _passwordError,
+                        onChanged: (val) {
+                          if (_passwordError != null) setState(() => _passwordError = null);
+                        },
                       ),
                       
                       const SizedBox(height: 16),
@@ -249,39 +297,100 @@ class _LoginScreenState extends State<LoginScreen> {
                           color: Colors.transparent,
                           child: InkWell(
                             borderRadius: BorderRadius.circular(28),
-                            onTap: () async {
+                            onTap: _isLoading ? null : () async {
                               final email = _emailController.text.trim();
-                              if (email.isNotEmpty && email.contains('@')) {
-                                String name = email.split('@').first;
-                                // Capitalize first letter for display
-                                if (name.isNotEmpty) {
-                                  name = name[0].toUpperCase() + name.substring(1);
-                                }
-                                final prefs = await SharedPreferences.getInstance();
-                                await prefs.setString('demoUserName', name);
-                                await prefs.setString('demoUserEmail', email);
-                              } else if (email.isNotEmpty) {
-                                final prefs = await SharedPreferences.getInstance();
-                                await prefs.setString('demoUserName', email);
-                                await prefs.setString('demoUserEmail', email);
+                              final password = _passwordController.text;
+                              
+                              bool hasError = false;
+                              
+                              if (email.isEmpty) {
+                                setState(() {
+                                  _emailError = 'Please enter email or phone number';
+                                });
+                                hasError = true;
+                              } else {
+                                setState(() => _emailError = null);
                               }
                               
-                              if (mounted) {
-                                Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(builder: (context) => const DashboardScreen()),
-                                );
+                              if (password.isEmpty) {
+                                setState(() {
+                                  _passwordError = 'Please enter your password';
+                                });
+                                hasError = true;
+                              } else {
+                                setState(() => _passwordError = null);
+                              }
+                              
+                              if (hasError) return;
+
+                              setState(() {
+                                _isLoading = true;
+                              });
+
+                              try {
+                                final response = await ApiService().login(email: email, password: password);
+                                
+                                if (response['success'] == true) {
+                                  final prefs = await SharedPreferences.getInstance();
+                                  
+                                  // Save Remember Me state
+                                  await prefs.setBool('remember_me', _rememberMe);
+                                  if (_rememberMe) {
+                                    await prefs.setString('saved_email', email);
+                                    await prefs.setString('saved_password', password);
+                                  } else {
+                                    await prefs.remove('saved_email');
+                                    await prefs.remove('saved_password');
+                                  }
+
+                                  // Also save basic info if needed for dashboard cache
+                                  final data = response['data'];
+                                  if (data != null) {
+                                    if (data['full_name'] != null) await prefs.setString('demoUserName', data['full_name']);
+                                    if (data['email'] != null) await prefs.setString('demoUserEmail', data['email']);
+                                    if (data['phone_no'] != null) await prefs.setString('userPhone', data['phone_no']);
+                                    if (data['profile_photo_url'] != null) await prefs.setString('profilePhotoUrl', data['profile_photo_url']);
+                                  }
+
+                                  if (mounted) {
+                                    Navigator.pushReplacement(
+                                      context,
+                                      MaterialPageRoute(builder: (context) => const DashboardScreen()),
+                                    );
+                                  }
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(e.toString().replaceAll('Exception: ', ''), style: GoogleFonts.inter(color: Colors.white)),
+                                      backgroundColor: Colors.redAccent,
+                                    ),
+                                  );
+                                }
+                              } finally {
+                                if (mounted) {
+                                  setState(() {
+                                    _isLoading = false;
+                                  });
+                                }
                               }
                             },
                             child: Center(
-                              child: Text(
-                                'Login',
-                                style: GoogleFonts.inter(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                              child: _isLoading 
+                                ? const SizedBox(
+                                    width: 24, 
+                                    height: 24, 
+                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                                  )
+                                : Text(
+                                    'Login',
+                                    style: GoogleFonts.inter(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                             ),
                           ),
                         ),
